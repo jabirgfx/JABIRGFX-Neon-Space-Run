@@ -778,15 +778,80 @@ body {
 
 @media (max-width: 440px) {
 
-    .nsr-brand {
-        display: none;
+    /* Keep the JABIRGFX logo visible on small phones.
+       Compact the HUD so all controls still fit. */
+    .nsr-hud {
+        justify-content: flex-start;
+        gap: 4px;
+        padding: 0 7px;
     }
 
-    .nsr-hud {
-        justify-content: flex-end;
+    .nsr-brand {
+        flex: 0 0 auto;
+        margin-right: 0;
+    }
+
+    .nsr-brand img {
+        width: 58px;
+        max-width: 58px;
+    }
+
+    .nsr-stat {
+        min-width: 43px;
+        padding: 4px 5px;
+    }
+
+    .nsr-stat small {
+        font-size: 6px;
+        letter-spacing: 1px;
+    }
+
+    .nsr-stat strong {
+        font-size: 13px;
+    }
+
+    .nsr-lives {
+        padding: 6px 4px;
+        font-size: 9px;
+        letter-spacing: 0;
+    }
+
+    .nsr-sound,
+    .nsr-pause {
+        width: 30px;
+        height: 30px;
+        flex: 0 0 30px;
+        border-radius: 9px;
+        font-size: 10px;
     }
 
     .nsr-card h1 {
         font-size: 43px;
+    }
+}
+
+@media (max-width: 350px) {
+    .nsr-brand img {
+        width: 52px;
+        max-width: 52px;
+    }
+
+    .nsr-stat {
+        min-width: 39px;
+        padding-left: 4px;
+        padding-right: 4px;
+    }
+
+    .nsr-lives {
+        font-size: 8px;
+        padding-left: 3px;
+        padding-right: 3px;
+    }
+
+    .nsr-sound,
+    .nsr-pause {
+        width: 28px;
+        height: 28px;
+        flex-basis: 28px;
     }
 }
