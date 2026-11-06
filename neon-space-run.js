@@ -41,6 +41,25 @@
     let height = 0;
     let dpr = 1;
 
+    // Performance profile: keep desktop visuals rich, reduce GPU work on mobile.
+    const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+        window.matchMedia("(max-width: 700px)").matches;
+    const performanceMode = isMobile ? "mobile" : "desktop";
+    const QUALITY = {
+        maxDpr: isMobile ? 1.25 : 2,
+        particleScale: isMobile ? 0.55 : 1,
+        starsMin: isMobile ? 45 : 80,
+        starsDivisor: isMobile ? 10000 : 7000,
+        shadows: !isMobile,
+        objectGradients: !isMobile,
+        backgroundGlow: !isMobile
+    };
+
+    let backgroundGradient = null;
+    let backgroundGlow = null;
+    let touchRect = null;
+    let shipGradient = null;
+
 
     function resizeCanvas() {
 
@@ -49,7 +68,7 @@
         width = rect.width;
         height = rect.height;
 
-        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        dpr = Math.min(window.devicePixelRatio || 1, QUALITY.maxDpr);
 
         canvas.width = Math.floor(width * dpr);
         canvas.height = Math.floor(height * dpr);
@@ -62,6 +81,29 @@
             0,
             0
         );
+
+        // Cache static gradients; creating gradients every frame is expensive on mobile.
+        backgroundGradient = ctx.createLinearGradient(0, 0, 0, height);
+        backgroundGradient.addColorStop(0, "#02050c");
+        backgroundGradient.addColorStop(0.55, "#05091a");
+        backgroundGradient.addColorStop(1, "#08051b");
+
+        backgroundGlow = QUALITY.backgroundGlow ? ctx.createRadialGradient(
+            width / 2, height * 0.72, 0,
+            width / 2, height * 0.72, width * 0.65
+        ) : null;
+        if (backgroundGlow) {
+            backgroundGlow.addColorStop(0, "rgba(94,45,255,0.13)");
+            backgroundGlow.addColorStop(1, "rgba(0,0,0,0)");
+        }
+
+        shipGradient = ctx.createLinearGradient(0, -30, 0, 25);
+        shipGradient.addColorStop(0, "#e8f7ff");
+        shipGradient.addColorStop(0.35, "#aab7d2");
+        shipGradient.addColorStop(0.7, "#53617c");
+        shipGradient.addColorStop(1, "#202a3d");
+
+        touchRect = rect;
     }
 
     window.addEventListener("resize", resizeCanvas);
@@ -152,8 +194,8 @@
         stars = [];
 
         const count = Math.max(
-            80,
-            Math.floor(width * height / 7000)
+            QUALITY.starsMin,
+            Math.floor(width * height / QUALITY.starsDivisor)
         );
 
         for (let i = 0; i < count; i++) {
@@ -325,6 +367,11 @@
         amount = 8
     ) {
 
+        amount = Math.max(1, Math.round(amount * QUALITY.particleScale));
+        const MAX_PARTICLES = isMobile ? 110 : 220;
+        if (particles.length >= MAX_PARTICLES) return;
+        amount = Math.min(amount, MAX_PARTICLES - particles.length);
+
         for (let i = 0; i < amount; i++) {
 
             particles.push({
@@ -410,13 +457,12 @@
 
             ctx.fillStyle = color;
 
-            ctx.shadowBlur = 12;
-
-            ctx.shadowColor = color;
-
+            if (QUALITY.shadows) {
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = color;
+            }
             ctx.fill();
-
-            ctx.shadowBlur = 0;
+            if (QUALITY.shadows) ctx.shadowBlur = 0;
         }
     }
 
@@ -462,99 +508,27 @@
 
     function drawBackground() {
 
-        const gradient = ctx.createLinearGradient(
-            0,
-            0,
-            0,
-            height
-        );
+        ctx.fillStyle = backgroundGradient;
+        ctx.fillRect(0, 0, width, height);
 
-        gradient.addColorStop(
-            0,
-            "#02050c"
-        );
-
-        gradient.addColorStop(
-            0.55,
-            "#05091a"
-        );
-
-        gradient.addColorStop(
-            1,
-            "#08051b"
-        );
-
-        ctx.fillStyle = gradient;
-
-        ctx.fillRect(
-            0,
-            0,
-            width,
-            height
-        );
-
-
-        /* Purple glow */
-
-        const glow = ctx.createRadialGradient(
-            width / 2,
-            height * 0.72,
-            0,
-            width / 2,
-            height * 0.72,
-            width * 0.65
-        );
-
-        glow.addColorStop(
-            0,
-            "rgba(94,45,255,0.13)"
-        );
-
-        glow.addColorStop(
-            1,
-            "rgba(0,0,0,0)"
-        );
-
-        ctx.fillStyle = glow;
-
-        ctx.fillRect(
-            0,
-            0,
-            width,
-            height
-        );
-
-
-        /* Horizon lines */
-
-        ctx.save();
-
-        ctx.globalAlpha = 0.08;
-
-        ctx.strokeStyle = "#6478ff";
-
-        ctx.lineWidth = 1;
-
-        const spacing = 80;
-
-        for (
-            let y = height % spacing;
-            y < height;
-            y += spacing
-        ) {
-
-            ctx.beginPath();
-
-            ctx.moveTo(0, y);
-
-            ctx.lineTo(width, y);
-
-            ctx.stroke();
+        if (backgroundGlow) {
+            ctx.fillStyle = backgroundGlow;
+            ctx.fillRect(0, 0, width, height);
         }
 
+        ctx.save();
+        ctx.globalAlpha = 0.08;
+        ctx.strokeStyle = "#6478ff";
+        ctx.lineWidth = 1;
+        const spacing = 80;
+        for (let y = height % spacing; y < height; y += spacing) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(width, y);
+            ctx.stroke();
+        }
         ctx.restore();
     }
-
 
     /* =====================================================
        DRAW ENERGY
@@ -562,126 +536,51 @@
 
     function drawEnergy(obj) {
 
-        const pulse =
-            Math.sin(obj.pulse) * 2;
+        const pulse = Math.sin(obj.pulse) * 2;
+        const radius = obj.size + pulse;
+        const purple = obj.type === "purple";
 
-        const radius =
-            obj.size + pulse;
-
-
-        const gradient = ctx.createRadialGradient(
-            obj.x,
-            obj.y,
-            0,
-            obj.x,
-            obj.y,
-            radius * 2
-        );
-
-        if (obj.type === "purple") {
-
-            gradient.addColorStop(
-                0,
-                "rgba(210,130,255,1)"
+        if (QUALITY.objectGradients) {
+            const gradient = ctx.createRadialGradient(
+                obj.x, obj.y, 0, obj.x, obj.y, radius * 2
             );
-
-            gradient.addColorStop(
-                0.25,
-                "rgba(157,70,255,0.95)"
-            );
-
-            gradient.addColorStop(
-                1,
-                "rgba(120,30,255,0)"
-            );
-
+            if (purple) {
+                gradient.addColorStop(0, "rgba(210,130,255,1)");
+                gradient.addColorStop(0.25, "rgba(157,70,255,0.95)");
+                gradient.addColorStop(1, "rgba(120,30,255,0)");
+            } else {
+                gradient.addColorStop(0, "rgba(150,240,255,1)");
+                gradient.addColorStop(0.25, "rgba(37,184,255,0.95)");
+                gradient.addColorStop(1, "rgba(0,130,255,0)");
+            }
+            ctx.fillStyle = gradient;
         } else {
-
-            gradient.addColorStop(
-                0,
-                "rgba(150,240,255,1)"
-            );
-
-            gradient.addColorStop(
-                0.25,
-                "rgba(37,184,255,0.95)"
-            );
-
-            gradient.addColorStop(
-                1,
-                "rgba(0,130,255,0)"
-            );
+            ctx.fillStyle = purple ? "rgba(157,70,255,0.72)" : "rgba(37,184,255,0.72)";
         }
 
-        ctx.fillStyle = gradient;
-
         ctx.beginPath();
-
-        ctx.arc(
-            obj.x,
-            obj.y,
-            radius * 2,
-            0,
-            Math.PI * 2
-        );
-
+        ctx.arc(obj.x, obj.y, radius * 2, 0, Math.PI * 2);
         ctx.fill();
-
-
-        /* Crystal */
 
         ctx.save();
-
-        ctx.translate(
-            obj.x,
-            obj.y
-        );
-
-        ctx.rotate(
-            obj.rotation
-        );
-
+        ctx.translate(obj.x, obj.y);
+        ctx.rotate(obj.rotation);
         ctx.beginPath();
-
-        ctx.moveTo(
-            0,
-            -obj.size
-        );
-
-        ctx.lineTo(
-            obj.size * 0.62,
-            0
-        );
-
-        ctx.lineTo(
-            0,
-            obj.size
-        );
-
-        ctx.lineTo(
-            -obj.size * 0.62,
-            0
-        );
-
+        ctx.moveTo(0, -obj.size);
+        ctx.lineTo(obj.size * 0.62, 0);
+        ctx.lineTo(0, obj.size);
+        ctx.lineTo(-obj.size * 0.62, 0);
         ctx.closePath();
+        ctx.fillStyle = purple ? "#b96cff" : "#39d6ff";
 
-        ctx.fillStyle =
-            obj.type === "purple"
-                ? "#b96cff"
-                : "#39d6ff";
-
-        ctx.shadowBlur = 22;
-
-        ctx.shadowColor =
-            obj.type === "purple"
-                ? "#a13cff"
-                : "#00aaff";
-
+        if (QUALITY.shadows) {
+            ctx.shadowBlur = 22;
+            ctx.shadowColor = purple ? "#a13cff" : "#00aaff";
+        }
         ctx.fill();
-
+        if (QUALITY.shadows) ctx.shadowBlur = 0;
         ctx.restore();
     }
-
 
     /* =====================================================
        DRAW ASTEROID
@@ -731,40 +630,24 @@
 
         ctx.closePath();
 
-        const gradient = ctx.createRadialGradient(
-            -obj.size * 0.3,
-            -obj.size * 0.3,
-            2,
-            0,
-            0,
-            obj.size
-        );
+        const gradient = QUALITY.objectGradients ? ctx.createRadialGradient(
+            -obj.size * 0.3, -obj.size * 0.3, 2, 0, 0, obj.size
+        ) : null;
 
-        gradient.addColorStop(
-            0,
-            "#7d8799"
-        );
+        if (gradient) gradient.addColorStop(0, "#7d8799");
 
-        gradient.addColorStop(
-            0.6,
-            "#303847"
-        );
+        if (gradient) gradient.addColorStop(0.6, "#303847");
 
-        gradient.addColorStop(
-            1,
-            "#111721"
-        );
+        if (gradient) gradient.addColorStop(1, "#111721");
 
-        ctx.fillStyle = gradient;
+        ctx.fillStyle = gradient || "#303847";
 
-        ctx.shadowBlur = 12;
-
-        ctx.shadowColor =
-            "rgba(120,130,150,0.35)";
-
+        if (QUALITY.shadows) {
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = "rgba(120,130,150,0.35)";
+        }
         ctx.fill();
-
-        ctx.shadowBlur = 0;
+        if (QUALITY.shadows) ctx.shadowBlur = 0;
 
 
         /* Craters */
@@ -917,45 +800,17 @@
         ctx.fillStyle =
             "#43d9ff";
 
-        ctx.shadowBlur = 20;
-
-        ctx.shadowColor =
-            "#25b8ff";
-
+        if (QUALITY.shadows) {
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = "#25b8ff";
+        }
         ctx.fill();
-
-        ctx.shadowBlur = 0;
+        if (QUALITY.shadows) ctx.shadowBlur = 0;
 
 
         /* Ship body */
 
-        const shipGradient =
-            ctx.createLinearGradient(
-                0,
-                -30,
-                0,
-                25
-            );
-
-        shipGradient.addColorStop(
-            0,
-            "#e8f7ff"
-        );
-
-        shipGradient.addColorStop(
-            0.35,
-            "#aab7d2"
-        );
-
-        shipGradient.addColorStop(
-            0.7,
-            "#53617c"
-        );
-
-        shipGradient.addColorStop(
-            1,
-            "#202a3d"
-        );
+        const shipFill = shipGradient;
 
         ctx.beginPath();
 
@@ -991,17 +846,14 @@
 
         ctx.closePath();
 
-        ctx.fillStyle =
-            shipGradient;
+        ctx.fillStyle = shipFill;
 
-        ctx.shadowBlur = 15;
-
-        ctx.shadowColor =
-            "rgba(96,105,255,0.7)";
-
+        if (QUALITY.shadows) {
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "rgba(96,105,255,0.7)";
+        }
         ctx.fill();
-
-        ctx.shadowBlur = 0;
+        if (QUALITY.shadows) ctx.shadowBlur = 0;
 
 
         /* Wings */
@@ -1092,11 +944,10 @@
         ctx.fillStyle =
             cockpitGradient;
 
-        ctx.shadowBlur = 12;
-
-        ctx.shadowColor =
-            "#25b8ff";
-
+        if (QUALITY.shadows) {
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = "#25b8ff";
+        }
         ctx.fill();
 
         ctx.restore();
@@ -1575,6 +1426,12 @@
 
     function gameLoop(timestamp) {
 
+        if (document.hidden) {
+            lastTime = timestamp;
+            requestAnimationFrame(gameLoop);
+            return;
+        }
+
         if (!lastTime) {
 
             lastTime =
@@ -1593,6 +1450,7 @@
             timestamp;
 
 
+        ctx.shadowBlur = 0;
         drawBackground();
 
         drawStars(delta);
@@ -1891,8 +1749,7 @@
         event
     ) {
 
-        const rect =
-            canvas.getBoundingClientRect();
+        const rect = touchRect || canvas.getBoundingClientRect();
 
 
         const x =
